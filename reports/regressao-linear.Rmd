@@ -1,0 +1,221 @@
+---
+title: "Regressão Linear"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(here)
+library(skimr)
+library(boot)
+theme_set(theme_bw())
+library(GGally)
+library(ggfortify)
+library(broom)
+library(modelr) # devtools::install_github("hadley/modelr")
+```
+
+```{r read}
+dados_raw = read_csv(
+    here::here("data/participation-per-country.csv"),
+    col_types = cols(
+        .default = col_double(),
+        site = col_character(),
+        country = col_character(),
+        geo = col_character(),
+        four_regions = col_character(),
+        eight_regions = col_character(),
+        six_regions = col_character(),
+        `World bank income group 2017` = col_character()
+    )
+) %>% janitor::clean_names()
+
+dados = dados_raw %>% 
+    filter(usuarios > 200, site == "StackOverflow" || site == "SuperUser") %>%
+    mutate(gni = log(gni))
+
+glimpse(stack)
+```
+
+# StackOverflow
+
+```{r}
+epi = dados %>% 
+    filter(!is.na(epi)) %>% 
+    select(responderam_prop, epi, site)
+gni = dados %>% 
+    filter(!is.na(gni)) %>% 
+    select(responderam_prop, gni, site)
+internet = dados %>% 
+    filter(!is.na(internet)) %>% 
+    select(responderam_prop, internet, site)
+```
+
+
+
+```{r}
+stack_gni = lm(responderam_prop ~ gni, data = filter(.data=gni, site=="StackOverflow"))
+super_gni = lm(responderam_prop ~ gni, data = filter(.data=gni, site=="SuperUser"))
+data_gni_super = gni %>%
+    filter(site=="SuperUser") %>%
+    add_predictions(model = super_gni)
+data_gni_stack = gni %>%
+    filter(site=="StackOverflow") %>%
+    add_predictions(model = stack_gni)
+
+
+ggplot() + 
+    geom_point(data = data_gni_super, aes(x = gni, y = responderam_prop), colour = "red", alpha = .8) + 
+    geom_point(data = data_gni_stack, aes(x = gni, y = responderam_prop), colour = "blue", alpha = .8) + 
+    geom_line(data = data_gni_super, aes(x = gni, y = pred), colour = "red", size = 1)+
+    geom_line(data = data_gni_stack, aes(x = gni, y = pred), colour = "blue", size = 1)+
+    labs(
+        y = "Responderam Perguntas",
+        x = "GNI (log)"
+    )
+ggsave("gni.png", width = 6, height = 4, dpi=600)
+```
+
+```{r}
+stack_epi = lm(responderam_prop ~ epi, data = filter(.data=epi, site=="StackOverflow"))
+super_epi = lm(responderam_prop ~ epi, data = filter(.data=epi, site=="SuperUser"))
+data_epi_super = epi %>%
+    filter(site=="SuperUser") %>%
+    add_predictions(model = super_epi)
+data_epi_stack = epi %>%
+    filter(site=="StackOverflow") %>%
+    add_predictions(model = stack_epi)
+
+
+ggplot() + 
+    geom_point(data = data_epi_super, aes(x = epi, y = responderam_prop), colour = "red", alpha = .8) + 
+    geom_point(data = data_epi_stack, aes(x = epi, y = responderam_prop), colour = "blue", alpha = .8) + 
+    geom_line(data = data_epi_super, aes(x = epi, y = pred), colour = "red", size = 1)+
+    geom_line(data = data_epi_stack, aes(x = epi, y = pred), colour = "blue", size = 1)+
+    labs(
+        y = "Responderam Perguntas",
+        x = "EPI"
+    )
+ggsave("epi.png", width = 6, height = 4, dpi=600)
+```
+
+```{r}
+stack_internet = lm(responderam_prop ~ internet, data = filter(.data=internet, site=="StackOverflow"))
+super_internet = lm(responderam_prop ~ internet, data = filter(.data=internet, site=="SuperUser"))
+data_internet_super = internet %>%
+    filter(site=="SuperUser") %>%
+    add_predictions(model = super_internet)
+data_internet_stack = internet %>%
+    filter(site=="StackOverflow") %>%
+    add_predictions(model = stack_internet)
+
+
+ggplot() + 
+    geom_point(data = data_internet_super, aes(x = internet, y = responderam_prop), colour = "red", alpha = .8) + 
+    geom_point(data = data_internet_stack, aes(x = internet, y = responderam_prop), colour = "blue", alpha = .8) + 
+    geom_line(data = data_internet_super, aes(x = internet, y = pred), colour = "red", size = 1)+
+    geom_line(data = data_internet_stack, aes(x = internet, y = pred), colour = "blue", size = 1)+
+    labs(
+        y = "Responderam Perguntas",
+        x = "Internet"
+    )
+ggsave("internet.png", width = 6, height = 4, dpi=600)
+```
+
+```{r}
+theta_epi <- function(d, i) {
+    df = d %>% 
+        slice(i)
+    f = lm(responderam_prop ~ epi, data = df)
+    coef(f)[2]
+}
+theta_gni <- function(d, i) {
+    df = d %>% 
+        slice(i)
+    f = lm(responderam_prop ~ gni, data = df)
+    coef(f)[2]
+}
+theta_internet <- function(d, i) {
+    df = d %>% 
+        slice(i)
+    f = lm(responderam_prop ~ internet, data = df)
+    coef(f)[2]
+}
+
+ci_stack_epi = boot(data = filter(epi, site == "StackOverflow"),
+           statistic = theta_epi,
+           R = 2000) %>%
+    tidy(conf.level = .95,
+         conf.method = "bca",
+         conf.int = TRUE)
+ci_super_epi = boot(data = filter(epi, site == "SuperUser"),
+           statistic = theta_epi,
+           R = 2000) %>%
+    tidy(conf.level = .95,
+         conf.method = "bca",
+         conf.int = TRUE)
+ci_stack_gni = boot(data = filter(gni, site == "StackOverflow"),
+           statistic = theta_gni,
+           R = 2000) %>%
+    tidy(conf.level = .95,
+         conf.method = "bca",
+         conf.int = TRUE)
+ci_super_gni = boot(data = filter(gni, site == "SuperUser"),
+           statistic = theta_gni,
+           R = 2000) %>%
+    tidy(conf.level = .95,
+         conf.method = "bca",
+         conf.int = TRUE)
+ci_stack_internet = boot(data = filter(internet, site == "StackOverflow"),
+           statistic = theta_internet,
+           R = 2000) %>%
+    tidy(conf.level = .95,
+         conf.method = "bca",
+         conf.int = TRUE)
+ci_super_internet = boot(data = filter(internet, site == "SuperUser"),
+           statistic = theta_internet,
+           R = 2000) %>%
+    tidy(conf.level = .95,
+         conf.method = "bca",
+         conf.int = TRUE)
+cis_gni = bind_rows(.id='name', "SuperUser" = ci_super_gni, "StackOverflow" = ci_stack_gni)
+cis_epi = bind_rows(.id='name', "SuperUser" = ci_super_epi, "StackOverflow" = ci_stack_epi)
+cis_internet = bind_rows(.id='name', "SuperUser" = ci_super_internet, "StackOverflow" = ci_stack_internet)
+```
+
+```{r}
+cis_gni %>%
+    ggplot(aes(y=name, x=statistic, xmin=conf.low, xmax=conf.high)) +
+    geom_linerange() +
+    geom_point(size=3) +
+    xlab("b1") + 
+    ylab("Site") +
+    theme(plot.title=element_text(hjust=0.5), text=element_text(size=10))
+    geom_point(size=3)
+ggsave("cis_gni.png", width=6, height = 4, dpi=600)
+```
+
+```{r}
+cis_epi %>%
+    ggplot(aes(y=name, x=statistic, xmin=conf.low, xmax=conf.high)) +
+    geom_linerange() +
+    geom_point(size=3) +
+    xlab("b1") + 
+    ylab("Site") +
+    theme(plot.title=element_text(hjust=0.5), text=element_text(size=10))
+    geom_point(size=3)
+ggsave("cis_epi.png", width=6, height = 4, dpi=600)
+```
+```{r}
+cis_internet %>%
+    ggplot(aes(y=name, x=statistic, xmin=conf.low, xmax=conf.high)) +
+    geom_linerange() +
+    geom_point(size=3) +
+    xlab("b1") + 
+    ylab("Site") +
+    theme(plot.title=element_text(hjust=0.5), text=element_text(size=10))
+    geom_point(size=3)
+ggsave("cis_internet.png", width=6, height = 4, dpi=600)
+```

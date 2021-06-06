@@ -1,0 +1,154 @@
+---
+title: "Regressão Linear"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(here)
+library(skimr)
+library(boot)
+theme_set(theme_bw())
+library(GGally)
+library(ggfortify)
+library(broom)
+library(modelr) # devtools::install_github("hadley/modelr")
+```
+
+```{r read}
+dados_raw = read_csv(
+    here::here("data/participation-per-country.csv"),
+    col_types = cols(
+        .default = col_double(),
+        site = col_character(),
+        country = col_character(),
+        geo = col_character(),
+        four_regions = col_character(),
+        eight_regions = col_character(),
+        six_regions = col_character(),
+        `World bank income group 2017` = col_character()
+    )
+) %>% janitor::clean_names()
+
+dados = dados_raw %>% 
+    filter(usuarios > 200, site == "StackOverflow" || site == "SuperUser") %>%
+    mutate(gni = log(gni))
+
+glimpse(dados)
+```
+
+# StackOverflow
+
+```{r}
+filtered = dados %>% 
+    filter(!is.na(epi), !is.na(gni), !is.na(internet)) %>% 
+    select(responderam_prop, epi, gni, internet, site)
+```
+
+
+
+```{r}
+stack_model = lm(responderam_prop ~ gni + epi + internet, data = filter(.data=filtered, site=="StackOverflow"))
+data_stack = filtered %>%
+    filter(site=="StackOverflow") %>%
+    add_predictions(model = stack_model)
+stack_model$coefficients
+
+```
+
+```{r}
+theta <- function(d, i) {
+    df = d %>% 
+        slice(i)
+    f = lm(responderam_prop ~ epi + gni + internet, data = df)
+    coef(f)
+}
+ci_stack = boot(data = filter(filtered, site == "StackOverflow"),
+           statistic = theta,
+           R = 2000) %>%
+    tidy(conf.level = .95,
+         conf.method = "bca",
+         conf.int = TRUE)
+ci_super = boot(data = filter(filtered, site == "SuperUser"),
+           statistic = theta,
+           R = 2000) %>%
+    tidy(conf.level = .95,
+         conf.method = "bca",
+         conf.int = TRUE)
+```
+
+```{r}
+cis = bind_rows(.id='name', "SuperUser" = ci_super, "StackOverflow" = ci_stack)
+```
+
+
+```{r}
+cis %>%
+  filter(term=="(Intercept)") %>%
+    ggplot(aes(y=name, x=statistic, xmin=conf.low, xmax=conf.high)) +
+    geom_linerange() +
+    geom_point(size=3) +
+    xlab("b0") + 
+    ylab("Site") +
+    #facet_grid(~name) +
+    theme(plot.title=element_text(hjust=0.5), text=element_text(size=10))
+    geom_point(size=3)
+ggsave("m_stack_intercept.png", width=6, height = 4, dpi=600)
+```
+
+
+```{r}
+cis %>%
+  filter(term=="epi") %>%
+    ggplot(aes(y=name, x=statistic, xmin=conf.low, xmax=conf.high)) +
+    geom_linerange() +
+    geom_point(size=3) +
+    xlab("EPI") + 
+    ylab("Site") +
+    #facet_grid(~name) +
+    theme(plot.title=element_text(hjust=0.5), text=element_text(size=10))
+    geom_point(size=3)
+ggsave("m_stack_epi.png", width=6, height = 4, dpi=600)
+```
+```{r}
+cis %>%
+  filter(term=="epi") %>%
+    ggplot(aes(y=name, x=statistic, xmin=conf.low, xmax=conf.high)) +
+    geom_linerange() +
+    geom_point(size=3) +
+    xlab("EPI") + 
+    ylab("Site") +
+    #facet_grid(~name) +
+    theme(plot.title=element_text(hjust=0.5), text=element_text(size=10))
+    geom_point(size=3)
+ggsave("m_stack_epi.png", width=6, height = 4, dpi=600)
+```
+
+```{r}
+cis %>%
+  filter(term=="internet") %>%
+    ggplot(aes(y=name, x=statistic, xmin=conf.low, xmax=conf.high)) +
+    geom_linerange() +
+    geom_point(size=3) +
+    xlab("Internet") + 
+    ylab("Site") +
+    #facet_grid(~name) +
+    theme(plot.title=element_text(hjust=0.5), text=element_text(size=10))
+    geom_point(size=3)
+ggsave("m_stack_gni.png", width=6, height = 4, dpi=600)
+```
+```{r}
+cis %>%
+  filter(term=="gni") %>%
+    ggplot(aes(y=name, x=statistic, xmin=conf.low, xmax=conf.high)) +
+    geom_linerange() +
+    geom_point(size=3) +
+    xlab("GNI (log)") + 
+    ylab("Site") +
+    #facet_grid(~name) +
+    theme(plot.title=element_text(hjust=0.5), text=element_text(size=10))
+    geom_point(size=3)
+ggsave("m_stack_internet.png", width=6, height = 4, dpi=600)
+```
